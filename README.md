@@ -15,10 +15,10 @@ https://jason9075.github.io/ball-sim/
 
 ## Local Development
 
-Serve the static files from the project root:
+Start the Nix-managed dev server:
 
 ```sh
-python3 -m http.server 8000
+just dev
 ```
 
 Then open:
@@ -27,8 +27,10 @@ Then open:
 http://127.0.0.1:8000/
 ```
 
-If you use Nix and Just:
+`just dev` enters the flake dev shell automatically, serves the static files, and restarts the server with `entr` when `index.html` or `matter.min.js` changes.
+
+You can override the bind host or port:
 
 ```sh
-just dev
+HOST=0.0.0.0 PORT=8080 just dev
 ```

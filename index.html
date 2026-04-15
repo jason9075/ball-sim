@@ -114,6 +114,35 @@
         backdrop-filter: blur(14px);
       }
 
+      .status {
+        position: fixed;
+        z-index: 2;
+        top: calc(max(16px, env(safe-area-inset-top)) + 58px);
+        right: max(18px, env(safe-area-inset-right));
+        max-width: min(260px, calc(100vw - 36px));
+        padding: 10px 14px;
+        border: 1px solid var(--panel-border);
+        border-radius: 8px;
+        background: var(--panel);
+        color: var(--text);
+        font-size: 16px;
+        font-weight: 800;
+        line-height: 1.25;
+        text-align: center;
+        opacity: 0;
+        transform: translateY(-6px);
+        transition:
+          opacity 180ms ease,
+          transform 180ms ease;
+        pointer-events: none;
+        backdrop-filter: blur(14px);
+      }
+
+      .status.is-visible {
+        opacity: 1;
+        transform: translateY(0);
+      }
+
       @media (min-width: 760px) {
         .controls {
           left: auto;
@@ -130,6 +159,7 @@
   <body>
     <canvas id="stage"></canvas>
     <div class="counter" aria-live="polite"><span id="ballCount">0</span> Balls</div>
+    <div class="status" id="statusMessage" aria-live="polite"></div>
     <div class="controls" aria-label="Physics controls">
       <button class="add" id="addBall" type="button">Add Ball</button>
       <button class="clear" id="clearBalls" type="button">Clear</button>
@@ -150,9 +180,11 @@
       } = Matter;
 
       const canvas = document.querySelector("#stage");
+      const controls = document.querySelector(".controls");
       const addButton = document.querySelector("#addBall");
       const clearButton = document.querySelector("#clearBalls");
       const ballCount = document.querySelector("#ballCount");
+      const statusMessage = document.querySelector("#statusMessage");
 
       const engine = Engine.create();
       engine.gravity.y = 1;
@@ -173,6 +205,16 @@
       const runner = Runner.create();
       const balls = [];
       let walls = [];
+      let controlsBody = null;
+      let averageFps = 60;
+      let lowFpsSince = null;
+      let lastFrameTime = performance.now();
+      let lastAutoClearTime = 0;
+      let statusTimer = null;
+
+      const lowFpsLimit = 20;
+      const lowFpsDuration = 2500;
+      const autoClearCooldown = 7000;
 
       const palette = [
         "#22c55e",
@@ -184,12 +226,90 @@
         "#14b8a6"
       ];
 
+      const wordCards = [
+        { emoji: "☀️", word: "Sun" },
+        { emoji: "⭐", word: "Star" },
+        { emoji: "🍎", word: "Apple" },
+        { emoji: "🍌", word: "Banana" },
+        { emoji: "🍇", word: "Grape" },
+        { emoji: "🍓", word: "Berry" },
+        { emoji: "🥕", word: "Carrot" },
+        { emoji: "🐱", word: "Cat" },
+        { emoji: "🐶", word: "Dog" },
+        { emoji: "🐟", word: "Fish" },
+        { emoji: "🐸", word: "Frog" },
+        { emoji: "🦁", word: "Lion" },
+        { emoji: "🐵", word: "Monkey" },
+        { emoji: "🐼", word: "Panda" },
+        { emoji: "🐰", word: "Rabbit" },
+        { emoji: "🐢", word: "Turtle" },
+        { emoji: "🐝", word: "Bee" },
+        { emoji: "🦋", word: "Butterfly" },
+        { emoji: "🐘", word: "Elephant" },
+        { emoji: "📘", word: "Book" },
+        { emoji: "✏️", word: "Pencil" },
+        { emoji: "🎒", word: "Bag" },
+        { emoji: "🎨", word: "Color" },
+        { emoji: "🏠", word: "House" },
+        { emoji: "🚪", word: "Door" },
+        { emoji: "🪟", word: "Window" },
+        { emoji: "🛏️", word: "Bed" },
+        { emoji: "🪑", word: "Chair" },
+        { emoji: "🧸", word: "Toy" },
+        { emoji: "🌳", word: "Tree" },
+        { emoji: "🌸", word: "Flower" },
+        { emoji: "🌧️", word: "Rain" },
+        { emoji: "❄️", word: "Snow" },
+        { emoji: "🔥", word: "Fire" },
+        { emoji: "💧", word: "Water" },
+        { emoji: "🌈", word: "Rainbow" },
+        { emoji: "🚗", word: "Car" },
+        { emoji: "🚌", word: "Bus" },
+        { emoji: "🚲", word: "Bike" },
+        { emoji: "🚂", word: "Train" },
+        { emoji: "✈️", word: "Plane" },
+        { emoji: "🚀", word: "Rocket" },
+        { emoji: "⛵", word: "Boat" },
+        { emoji: "🌙", word: "Moon" },
+        { emoji: "⚽", word: "Ball" },
+        { emoji: "🎵", word: "Music" },
+        { emoji: "😀", word: "Happy" },
+        { emoji: "❤️", word: "Love" },
+        { emoji: "👋", word: "Hello" },
+        { emoji: "🐦", word: "Bird" }
+      ];
+
       function randomBetween(min, max) {
         return Math.random() * (max - min) + min;
       }
 
+      function clamp(value, min, max) {
+        return Math.min(Math.max(value, min), max);
+      }
+
+      function pickRandom(items) {
+        return items[Math.floor(Math.random() * items.length)];
+      }
+
+      function randomSpawnX(radius) {
+        const margin = radius + 28;
+        const min = Math.min(margin, window.innerWidth / 2);
+        const max = Math.max(window.innerWidth - margin, window.innerWidth / 2);
+        return randomBetween(min, max);
+      }
+
       function updateCounter() {
         ballCount.textContent = String(balls.length);
+      }
+
+      function showStatus(message) {
+        statusMessage.textContent = message;
+        statusMessage.classList.add("is-visible");
+
+        window.clearTimeout(statusTimer);
+        statusTimer = window.setTimeout(() => {
+          statusMessage.classList.remove("is-visible");
+        }, 2600);
       }
 
       function makeWalls() {
@@ -215,10 +335,41 @@
         World.add(engine.world, walls);
       }
 
-      function addBall(x = randomBetween(80, window.innerWidth - 80), y = 80) {
-        const radius = Math.round(randomBetween(26, 52));
-        const color = palette[Math.floor(Math.random() * palette.length)];
-        const ball = Bodies.circle(x, y, radius, {
+      function makeControlsBody() {
+        const rect = controls.getBoundingClientRect();
+
+        if (controlsBody) {
+          World.remove(engine.world, controlsBody);
+        }
+
+        controlsBody = Bodies.rectangle(
+          rect.left + rect.width / 2,
+          rect.top + rect.height / 2,
+          rect.width,
+          rect.height + 18,
+          {
+            isStatic: true,
+            restitution: 0.72,
+            friction: 0.08,
+            render: {
+              visible: false
+            }
+          }
+        );
+
+        World.add(engine.world, controlsBody);
+      }
+
+      function addBall(x = null, y = null) {
+        const radius = Math.round(randomBetween(84, 152));
+        const color = pickRandom(palette);
+        const card = pickRandom(wordCards);
+        const minX = radius + 8;
+        const maxX = Math.max(window.innerWidth - radius - 8, minX);
+        const minY = radius + 8;
+        const startX = clamp(x ?? randomSpawnX(radius), minX, maxX);
+        const startY = clamp(y ?? radius + 32, minY, Math.max(window.innerHeight / 2, minY));
+        const ball = Bodies.circle(startX, startY, radius, {
           restitution: 0.82,
           friction: 0.02,
           frictionAir: 0.003,
@@ -229,6 +380,9 @@
             lineWidth: 3
           }
         });
+
+        ball.plugin.wordCard = card;
+        ball.plugin.radius = radius;
 
         Body.setVelocity(ball, {
           x: randomBetween(-5, 5),
@@ -241,10 +395,77 @@
         updateCounter();
       }
 
+      function drawBallLabels() {
+        const context = render.context;
+
+        context.save();
+        context.textAlign = "center";
+        context.textBaseline = "middle";
+
+        balls.forEach((ball) => {
+          const card = ball.plugin.wordCard;
+          const radius = ball.plugin.radius;
+          if (!card || !radius) return;
+
+          const { x, y } = ball.position;
+          const emojiSize = Math.max(25, Math.round(radius * 0.52));
+          const wordSize = Math.max(15, Math.round(radius * 0.28));
+
+          context.fillStyle = "rgba(255, 255, 255, 0.90)";
+          context.beginPath();
+          context.arc(x, y, radius * 0.72, 0, Math.PI * 2);
+          context.fill();
+
+          context.font = `700 ${emojiSize}px system-ui, "Segoe UI Emoji", sans-serif`;
+          context.fillStyle = "#111827";
+          context.fillText(card.emoji, x, y - radius * 0.20);
+
+          context.font = `900 ${wordSize}px system-ui, sans-serif`;
+          context.fillStyle = "#0f172a";
+          context.fillText(card.word, x, y + radius * 0.34, radius * 1.28);
+        });
+
+        context.restore();
+      }
+
       function clearBalls() {
         if (!balls.length) return;
         World.remove(engine.world, balls.splice(0, balls.length));
         updateCounter();
+      }
+
+      function autoClearForPerformance() {
+        if (!balls.length) return;
+
+        clearBalls();
+        showStatus("Too slow. Cleared!");
+      }
+
+      function watchPerformance(now) {
+        const delta = Math.max(now - lastFrameTime, 1);
+        const currentFps = 1000 / delta;
+
+        averageFps = averageFps * 0.94 + currentFps * 0.06;
+        lastFrameTime = now;
+
+        if (balls.length >= 2 && averageFps < lowFpsLimit) {
+          lowFpsSince ??= now;
+        } else {
+          lowFpsSince = null;
+        }
+
+        if (
+          lowFpsSince &&
+          now - lowFpsSince > lowFpsDuration &&
+          now - lastAutoClearTime > autoClearCooldown
+        ) {
+          lastAutoClearTime = now;
+          lowFpsSince = null;
+          averageFps = 60;
+          autoClearForPerformance();
+        }
+
+        window.requestAnimationFrame(watchPerformance);
       }
 
       function resizeStage() {
@@ -261,6 +482,7 @@
         render.bounds.max.y = height;
 
         makeWalls();
+        makeControlsBody();
       }
 
       const mouse = Mouse.create(render.canvas);
@@ -279,7 +501,8 @@
 
       Events.on(mouseConstraint, "mousedown", (event) => {
         const target = event.source.body;
-        if (!target && event.mouse.position.y < window.innerHeight - 130) {
+        const controlsTop = controls.getBoundingClientRect().top;
+        if (!target && event.mouse.position.y < controlsTop - 16) {
           addBall(event.mouse.position.x, event.mouse.position.y);
         }
       });
@@ -291,12 +514,15 @@
         window.setTimeout(resizeStage, 250);
       });
 
+      Events.on(render, "afterRender", drawBallLabels);
+
       resizeStage();
       Render.run(render);
       Runner.run(runner, engine);
+      window.requestAnimationFrame(watchPerformance);
 
-      for (let i = 0; i < 8; i += 1) {
-        addBall(randomBetween(90, window.innerWidth - 90), randomBetween(60, 220));
+      for (let i = 0; i < 3; i += 1) {
+        addBall(null, randomBetween(70, 230));
       }
     </script>
   </body>

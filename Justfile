@@ -7,8 +7,8 @@ default:
     @just --list
 
 dev:
-    @if [ -z "$${BALL_SIM_DEV_SHELL:-}" ]; then \
-        exec env BALL_SIM_DEV_SHELL=1 nix develop "path:$$(pwd)" --command just _dev; \
+    @if [ -z "${BALL_SIM_DEV_SHELL:-}" ]; then \
+        exec env BALL_SIM_DEV_SHELL=1 nix develop "path:$(pwd)" --command just _dev; \
     else \
         exec just _dev; \
     fi
