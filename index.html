@@ -1,0 +1,303 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <title>Touch Ball Physics</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        --panel: rgba(13, 18, 28, 0.86);
+        --panel-border: rgba(255, 255, 255, 0.14);
+        --text: #f8fafc;
+        --muted: #cbd5e1;
+        --add: #22c55e;
+        --add-strong: #16a34a;
+        --clear: #f97316;
+        --clear-strong: #ea580c;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        width: 100%;
+        height: 100%;
+        margin: 0;
+        overflow: hidden;
+        background: #0b1020;
+        font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        touch-action: none;
+        user-select: none;
+      }
+
+      #stage {
+        position: fixed;
+        inset: 0;
+        width: 100vw;
+        height: 100vh;
+        display: block;
+        background:
+          radial-gradient(circle at 18% 14%, rgba(34, 197, 94, 0.20), transparent 28%),
+          radial-gradient(circle at 82% 12%, rgba(249, 115, 22, 0.16), transparent 24%),
+          linear-gradient(145deg, #101827 0%, #1f2937 46%, #111827 100%);
+      }
+
+      .controls {
+        position: fixed;
+        z-index: 2;
+        left: max(18px, env(safe-area-inset-left));
+        right: max(18px, env(safe-area-inset-right));
+        bottom: max(18px, env(safe-area-inset-bottom));
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 14px;
+        padding: 14px;
+        border: 1px solid var(--panel-border);
+        border-radius: 8px;
+        background: var(--panel);
+        backdrop-filter: blur(14px);
+        box-shadow: 0 16px 42px rgba(0, 0, 0, 0.28);
+      }
+
+      button {
+        min-height: 76px;
+        border: 0;
+        border-radius: 8px;
+        color: var(--text);
+        font-size: 24px;
+        font-weight: 800;
+        letter-spacing: 0;
+        cursor: pointer;
+        touch-action: manipulation;
+        box-shadow: inset 0 -5px 0 rgba(0, 0, 0, 0.20);
+        transition:
+          transform 120ms ease,
+          filter 120ms ease,
+          box-shadow 120ms ease;
+      }
+
+      button:active {
+        transform: translateY(3px);
+        box-shadow: inset 0 -2px 0 rgba(0, 0, 0, 0.20);
+      }
+
+      button:focus-visible {
+        outline: 4px solid rgba(255, 255, 255, 0.72);
+        outline-offset: 3px;
+      }
+
+      .add {
+        background: linear-gradient(180deg, var(--add), var(--add-strong));
+      }
+
+      .clear {
+        background: linear-gradient(180deg, var(--clear), var(--clear-strong));
+      }
+
+      .counter {
+        position: fixed;
+        z-index: 2;
+        top: max(16px, env(safe-area-inset-top));
+        right: max(18px, env(safe-area-inset-right));
+        min-width: 108px;
+        padding: 12px 16px;
+        border: 1px solid var(--panel-border);
+        border-radius: 8px;
+        background: var(--panel);
+        color: var(--muted);
+        font-size: 18px;
+        font-weight: 700;
+        text-align: center;
+        backdrop-filter: blur(14px);
+      }
+
+      @media (min-width: 760px) {
+        .controls {
+          left: auto;
+          grid-template-columns: 190px 190px;
+        }
+
+        button {
+          min-height: 86px;
+          font-size: 26px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <canvas id="stage"></canvas>
+    <div class="counter" aria-live="polite"><span id="ballCount">0</span> Balls</div>
+    <div class="controls" aria-label="Physics controls">
+      <button class="add" id="addBall" type="button">Add Ball</button>
+      <button class="clear" id="clearBalls" type="button">Clear</button>
+    </div>
+
+    <script src="./matter.min.js"></script>
+    <script>
+      const {
+        Bodies,
+        Body,
+        Engine,
+        Events,
+        Mouse,
+        MouseConstraint,
+        Render,
+        Runner,
+        World
+      } = Matter;
+
+      const canvas = document.querySelector("#stage");
+      const addButton = document.querySelector("#addBall");
+      const clearButton = document.querySelector("#clearBalls");
+      const ballCount = document.querySelector("#ballCount");
+
+      const engine = Engine.create();
+      engine.gravity.y = 1;
+      engine.gravity.scale = 0.00115;
+
+      const render = Render.create({
+        canvas,
+        engine,
+        options: {
+          width: window.innerWidth,
+          height: window.innerHeight,
+          wireframes: false,
+          background: "transparent",
+          pixelRatio: Math.min(window.devicePixelRatio || 1, 2)
+        }
+      });
+
+      const runner = Runner.create();
+      const balls = [];
+      let walls = [];
+
+      const palette = [
+        "#22c55e",
+        "#38bdf8",
+        "#f97316",
+        "#f43f5e",
+        "#eab308",
+        "#a78bfa",
+        "#14b8a6"
+      ];
+
+      function randomBetween(min, max) {
+        return Math.random() * (max - min) + min;
+      }
+
+      function updateCounter() {
+        ballCount.textContent = String(balls.length);
+      }
+
+      function makeWalls() {
+        const width = window.innerWidth;
+        const height = window.innerHeight;
+        const thickness = 80;
+
+        if (walls.length) {
+          World.remove(engine.world, walls);
+        }
+
+        walls = [
+          Bodies.rectangle(width / 2, -thickness / 2, width + thickness * 2, thickness, { isStatic: true }),
+          Bodies.rectangle(width / 2, height + thickness / 2, width + thickness * 2, thickness, { isStatic: true }),
+          Bodies.rectangle(-thickness / 2, height / 2, thickness, height + thickness * 2, { isStatic: true }),
+          Bodies.rectangle(width + thickness / 2, height / 2, thickness, height + thickness * 2, { isStatic: true })
+        ];
+
+        walls.forEach((wall) => {
+          wall.render.visible = false;
+        });
+
+        World.add(engine.world, walls);
+      }
+
+      function addBall(x = randomBetween(80, window.innerWidth - 80), y = 80) {
+        const radius = Math.round(randomBetween(26, 52));
+        const color = palette[Math.floor(Math.random() * palette.length)];
+        const ball = Bodies.circle(x, y, radius, {
+          restitution: 0.82,
+          friction: 0.02,
+          frictionAir: 0.003,
+          density: 0.0018,
+          render: {
+            fillStyle: color,
+            strokeStyle: "rgba(255, 255, 255, 0.62)",
+            lineWidth: 3
+          }
+        });
+
+        Body.setVelocity(ball, {
+          x: randomBetween(-5, 5),
+          y: randomBetween(-2, 1)
+        });
+
+        Body.setAngularVelocity(ball, randomBetween(-0.12, 0.12));
+        balls.push(ball);
+        World.add(engine.world, ball);
+        updateCounter();
+      }
+
+      function clearBalls() {
+        if (!balls.length) return;
+        World.remove(engine.world, balls.splice(0, balls.length));
+        updateCounter();
+      }
+
+      function resizeStage() {
+        const width = window.innerWidth;
+        const height = window.innerHeight;
+
+        render.canvas.width = width * render.options.pixelRatio;
+        render.canvas.height = height * render.options.pixelRatio;
+        render.canvas.style.width = `${width}px`;
+        render.canvas.style.height = `${height}px`;
+        render.options.width = width;
+        render.options.height = height;
+        render.bounds.max.x = width;
+        render.bounds.max.y = height;
+
+        makeWalls();
+      }
+
+      const mouse = Mouse.create(render.canvas);
+      const mouseConstraint = MouseConstraint.create(engine, {
+        mouse,
+        constraint: {
+          stiffness: 0.18,
+          render: {
+            visible: false
+          }
+        }
+      });
+
+      World.add(engine.world, mouseConstraint);
+      render.mouse = mouse;
+
+      Events.on(mouseConstraint, "mousedown", (event) => {
+        const target = event.source.body;
+        if (!target && event.mouse.position.y < window.innerHeight - 130) {
+          addBall(event.mouse.position.x, event.mouse.position.y);
+        }
+      });
+
+      addButton.addEventListener("click", () => addBall());
+      clearButton.addEventListener("click", clearBalls);
+      window.addEventListener("resize", resizeStage);
+      window.addEventListener("orientationchange", () => {
+        window.setTimeout(resizeStage, 250);
+      });
+
+      resizeStage();
+      Render.run(render);
+      Runner.run(runner, engine);
+
+      for (let i = 0; i < 8; i += 1) {
+        addBall(randomBetween(90, window.innerWidth - 90), randomBetween(60, 220));
+      }
+    </script>
+  </body>
+</html>
