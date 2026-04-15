@@ -48,13 +48,15 @@
       .controls {
         position: fixed;
         z-index: 2;
-        left: max(18px, env(safe-area-inset-left));
-        right: max(18px, env(safe-area-inset-right));
-        bottom: max(18px, env(safe-area-inset-bottom));
+        left: max(clamp(10px, 2vw, 18px), env(safe-area-inset-left));
+        right: max(clamp(10px, 2vw, 18px), env(safe-area-inset-right));
+        bottom: max(clamp(10px, 2vh, 18px), env(safe-area-inset-bottom));
         display: grid;
         grid-template-columns: 1fr 1fr;
-        gap: 14px;
-        padding: 14px;
+        gap: clamp(8px, 1.4vw, 14px);
+        width: min(92vw, 420px);
+        margin-left: auto;
+        padding: clamp(8px, 1.4vw, 14px);
         border: 1px solid var(--panel-border);
         border-radius: 8px;
         background: var(--panel);
@@ -63,11 +65,11 @@
       }
 
       button {
-        min-height: 76px;
+        min-height: clamp(48px, 10vh, 72px);
         border: 0;
         border-radius: 8px;
         color: var(--text);
-        font-size: 24px;
+        font-size: clamp(17px, 3.2vh, 24px);
         font-weight: 800;
         letter-spacing: 0;
         cursor: pointer;
@@ -145,13 +147,7 @@
 
       @media (min-width: 760px) {
         .controls {
-          left: auto;
-          grid-template-columns: 190px 190px;
-        }
-
-        button {
-          min-height: 86px;
-          font-size: 26px;
+          width: min(36vw, 420px);
         }
       }
     </style>
@@ -361,7 +357,7 @@
       }
 
       function addBall(x = null, y = null) {
-        const radius = Math.round(randomBetween(84, 152));
+        const radius = Math.round(randomBetween(42, 76));
         const color = pickRandom(palette);
         const card = pickRandom(wordCards);
         const minX = radius + 8;
