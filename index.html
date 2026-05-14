@@ -222,6 +222,18 @@
         "#14b8a6"
       ];
 
+      const audioCache = {};
+
+      function playWord(word) {
+        const key = word.toLowerCase();
+        if (!audioCache[key]) {
+          audioCache[key] = new Audio(`audio/${key}.mp3`);
+        }
+        const audio = audioCache[key];
+        audio.currentTime = 0;
+        audio.play().catch(() => {});
+      }
+
       const wordCards = [
         { emoji: "☀️", word: "Sun" },
         { emoji: "⭐", word: "Star" },
@@ -285,6 +297,16 @@
 
       function pickRandom(items) {
         return items[Math.floor(Math.random() * items.length)];
+      }
+
+      // Shuffled pool — each word appears once before any repeats
+      let cardPool = [];
+
+      function nextCard() {
+        if (!cardPool.length) {
+          cardPool = [...wordCards].sort(() => Math.random() - 0.5);
+        }
+        return cardPool.pop();
       }
 
       function randomSpawnX(radius) {
@@ -359,7 +381,7 @@
       function addBall(x = null, y = null) {
         const radius = Math.round(randomBetween(42, 76));
         const color = pickRandom(palette);
-        const card = pickRandom(wordCards);
+        const card = nextCard();
         const minX = radius + 8;
         const maxX = Math.max(window.innerWidth - radius - 8, minX);
         const minY = radius + 8;
@@ -468,20 +490,24 @@
         const width = window.innerWidth;
         const height = window.innerHeight;
 
-        render.canvas.width = width * render.options.pixelRatio;
-        render.canvas.height = height * render.options.pixelRatio;
-        render.canvas.style.width = `${width}px`;
-        render.canvas.style.height = `${height}px`;
         render.options.width = width;
         render.options.height = height;
+        render.bounds.min.x = 0;
+        render.bounds.min.y = 0;
         render.bounds.max.x = width;
         render.bounds.max.y = height;
+        // Use the official API so canvas.width, style, and data-pixel-ratio stay in sync
+        Render.setPixelRatio(render, render.options.pixelRatio);
 
         makeWalls();
         makeControlsBody();
       }
 
       const mouse = Mouse.create(render.canvas);
+      // Matter.js reads data-pixel-ratio via parseInt(), which truncates 1.5 → 1.
+      // Override with the exact float so _getRelativeMousePosition stays accurate
+      // on non-integer DPR displays (e.g. Linux 150 % or Windows 125 % scaling).
+      mouse.pixelRatio = render.options.pixelRatio;
       const mouseConstraint = MouseConstraint.create(engine, {
         mouse,
         constraint: {
@@ -498,7 +524,9 @@
       Events.on(mouseConstraint, "mousedown", (event) => {
         const target = event.source.body;
         const controlsTop = controls.getBoundingClientRect().top;
-        if (!target && event.mouse.position.y < controlsTop - 16) {
+        if (target && balls.includes(target)) {
+          playWord(target.plugin.wordCard.word);
+        } else if (!target && event.mouse.position.y < controlsTop - 16) {
           addBall(event.mouse.position.x, event.mouse.position.y);
         }
       });
