@@ -6,6 +6,17 @@ port := env_var_or_default("PORT", "8000")
 default:
     @just --list
 
+gen-audio:
+    @if [ -z "${BALL_SIM_DEV_SHELL:-}" ]; then \
+        exec env BALL_SIM_DEV_SHELL=1 nix develop "path:$(pwd)" --command just _gen-audio; \
+    else \
+        exec just _gen-audio; \
+    fi
+
+[private]
+_gen-audio:
+    @python3 scripts/gen_audio.py
+
 dev:
     @if [ -z "${BALL_SIM_DEV_SHELL:-}" ]; then \
         exec env BALL_SIM_DEV_SHELL=1 nix develop "path:$(pwd)" --command just _dev; \

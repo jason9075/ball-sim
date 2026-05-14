@@ -27,6 +27,7 @@
               pkgs.entr
               pkgs.just
               pkgs.python3
+              pkgs.python3Packages.edge-tts
             ];
           };
         }
